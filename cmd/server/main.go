@@ -40,6 +40,10 @@ func main() {
 			continue
 		}
 
+		// Get and display the remote address
+		remoteAddr := conn.RemoteAddr().String()
+		fmt.Printf("New connection from: %s\n", remoteAddr)
+
 		go handleConnection(conn)
 	}
 }
@@ -61,8 +65,8 @@ func handleConnection(conn net.Conn) {
 		// Handle file transfer
 		handleFileTransfer(conn, reader, firstLine[5:])
 	} else {
-		// Handle text transfer
-		handleTextTransfer(conn, reader)
+		// Handle text transfer - the first line is the message
+		fmt.Printf("Received text: %s\n", firstLine)
 	}
 }
 
@@ -86,29 +90,34 @@ func handleFileTransfer(conn net.Conn, reader *bufio.Reader, filename string) {
 	fmt.Printf("Received file: %s\n", filename)
 }
 
-func handleTextTransfer(conn net.Conn, reader *bufio.Reader) {
-	// Read the text content
-	text, err := reader.ReadString('\n')
-	if err != nil {
-		fmt.Printf("Error reading text: %v\n", err)
-		return
-	}
-
-	fmt.Printf("Received text: %s\n", text)
-}
-
 func getLocalIP() string {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {
 		return "unknown"
 	}
 
+	// First try to find LAN IPs (192.168.x.x, 10.x.x.x, 172.16.x.x)
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
-			if ipnet.IP.To4() != nil {
+			if ip4 := ipnet.IP.To4(); ip4 != nil {
+				// Check for common LAN IP patterns
+				if ip4[0] == 192 && ip4[1] == 168 || // 192.168.x.x
+					ip4[0] == 10 || // 10.x.x.x
+					(ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31) { // 172.16.x.x to 172.31.x.x
+					return ipnet.IP.String()
+				}
+			}
+		}
+	}
+
+	// Fallback to any non-loopback IP
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ip4 := ipnet.IP.To4(); ip4 != nil {
 				return ipnet.IP.String()
 			}
 		}
 	}
+
 	return "unknown"
 }

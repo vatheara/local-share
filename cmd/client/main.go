@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"net"
 	"os"
+	"path/filepath"
 	"strings"
-
-	"local-share/client"
 )
+
+const PORT = ":8080"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -25,16 +29,78 @@ func main() {
 			fmt.Println("Error: Message is required")
 			return
 		}
-		client.SendText(serverIP, strings.Join(os.Args[3:], " "))
+		sendText(serverIP, strings.Join(os.Args[3:], " "))
 
 	case "file":
 		if len(os.Args) < 4 {
 			fmt.Println("Error: File path is required")
 			return
 		}
-		client.SendFile(serverIP, os.Args[3])
+		sendFile(serverIP, os.Args[3])
 
 	default:
 		fmt.Println("Unknown command. Use 'text' or 'file'")
 	}
+}
+
+func sendText(serverIP, message string) {
+	conn, err := net.Dial("tcp", serverIP+PORT)
+	if err != nil {
+		fmt.Printf("Error connecting to server: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	// Send the message
+	writer := bufio.NewWriter(conn)
+	_, err = writer.WriteString(message + "\n")
+	if err != nil {
+		fmt.Printf("Error sending message: %v\n", err)
+		return
+	}
+
+	// Ensure the message is sent
+	if err := writer.Flush(); err != nil {
+		fmt.Printf("Error flushing message: %v\n", err)
+		return
+	}
+
+	fmt.Println("Message sent successfully")
+}
+
+func sendFile(serverIP, filePath string) {
+	// Open the file
+	file, err := os.Open(filePath)
+	if err != nil {
+		fmt.Printf("Error opening file: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	// Connect to server
+	conn, err := net.Dial("tcp", serverIP+PORT)
+	if err != nil {
+		fmt.Printf("Error connecting to server: %v\n", err)
+		return
+	}
+	defer conn.Close()
+
+	// Send the filename
+	writer := bufio.NewWriter(conn)
+	filename := filepath.Base(filePath)
+	_, err = writer.WriteString("FILE:" + filename + "\n")
+	if err != nil {
+		fmt.Printf("Error sending filename: %v\n", err)
+		return
+	}
+	writer.Flush()
+
+	// Send the file content
+	_, err = io.Copy(conn, file)
+	if err != nil {
+		fmt.Printf("Error sending file: %v\n", err)
+		return
+	}
+
+	fmt.Printf("File %s sent successfully\n", filename)
 }

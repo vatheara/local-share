@@ -6,12 +6,14 @@ A simple CLI application written in Go that allows sharing text and files betwee
 
 - Share text messages between computers
 - Share files between computers
+- Password-based encryption for text messages (AES-256)
 - Works on any computer in the same LAN
 - Simple command-line interface
 
 ## Prerequisites
 
 - Go 1.21 or later installed on your system
+- For password input features: `golang.org/x/term` package
 
 ## Project Structure
 
@@ -70,11 +72,11 @@ This will create two executables in the `bin` directory:
 ./bin/server
 ```
 
-The server will display its IP address and start listening on port 8080.
+The server will prompt for a password to encrypt messages, then display its IP address and start listening on port 8080.
 
-### Sending Text
+### Sending Text (Encrypted)
 
-To send text to the server, use:
+To send encrypted text to the server, use:
 ```bash
 # Windows
 .\bin\client.exe text <server-ip> <message>
@@ -91,6 +93,8 @@ Example:
 # Unix-like systems
 ./bin/client text 192.168.1.100 Hello, this is a test message!
 ```
+
+When sending text, you'll be prompted to enter the same password that was used to start the server.
 
 ### Sending Files
 
@@ -111,6 +115,29 @@ Example:
 # Unix-like systems
 ./bin/client file 192.168.1.100 /path/to/your/file.txt
 ```
+
+## Password Management
+
+The password can be provided in two ways:
+
+1. Environment Variable:
+```bash
+# Windows PowerShell
+$env:LOCALSHARE_KEY="your-password"
+
+# Unix-like systems
+export LOCALSHARE_KEY="your-password"
+```
+
+2. Interactive Prompt:
+- The server will prompt for a password when starting
+- The client will prompt for the same password when sending messages
+
+Important security notes:
+- Use the same password on both client and server
+- Share the password securely with the receiver (not over the same network)
+- Consider changing the password periodically for better security
+- The password is automatically converted to a secure encryption key
 
 ## Notes
 

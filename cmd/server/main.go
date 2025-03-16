@@ -2,12 +2,18 @@ package main
 
 import (
 	"bufio"
+	"crypto/aes"
+	"crypto/cipher"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
+
+	"golang.org/x/term"
 )
 
 const (
@@ -15,7 +21,67 @@ const (
 	BUFFER_SIZE = 1024 * 1024 // 1MB buffer for file transfers
 )
 
+// getEncryptionKey retrieves the encryption key from environment variable or prompts user
+func getEncryptionKey() (string, error) {
+	// First try environment variable
+	key := os.Getenv("LOCALSHARE_KEY")
+	if key != "" {
+		return padKey(key), nil
+	}
+
+	// If no environment variable, prompt user
+	fmt.Println("Please enter a password to encrypt messages:")
+	fmt.Print("Password: ")
+	keyBytes, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println() // Add newline after password input
+	if err != nil {
+		return "", fmt.Errorf("error reading password: %v", err)
+	}
+
+	// Confirm password
+	fmt.Print("Confirm password: ")
+	confirmBytes, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Println() // Add newline after password input
+	if err != nil {
+		return "", fmt.Errorf("error reading password confirmation: %v", err)
+	}
+
+	if string(keyBytes) != string(confirmBytes) {
+		return "", fmt.Errorf("passwords do not match")
+	}
+
+	return padKey(string(keyBytes)), nil
+}
+
+// padKey ensures the key is exactly 32 bytes by padding or truncating
+func padKey(key string) string {
+	if len(key) == 0 {
+		// If empty, use a default key
+		return "default-32-byte-key-for-local-share!!"
+	}
+
+	if len(key) >= 32 {
+		// If longer than 32 bytes, truncate
+		return key[:32]
+	}
+
+	// If shorter than 32 bytes, pad with the key itself
+	padded := make([]byte, 32)
+	copy(padded, key)
+	for i := len(key); i < 32; i++ {
+		padded[i] = padded[i-len(key)]
+	}
+	return string(padded)
+}
+
 func main() {
+	// Get the encryption key
+	encryptionKey, err := getEncryptionKey()
+	if err != nil {
+		fmt.Printf("Error getting encryption key: %v\n", err)
+		return
+	}
+
 	// Create uploads directory if it doesn't exist
 	if err := os.MkdirAll("uploads", 0755); err != nil {
 		fmt.Printf("Error creating uploads directory: %v\n", err)
@@ -44,11 +110,11 @@ func main() {
 		remoteAddr := conn.RemoteAddr().String()
 		fmt.Printf("New connection from: %s\n", remoteAddr)
 
-		go handleConnection(conn)
+		go handleConnection(conn, encryptionKey)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleConnection(conn net.Conn, encryptionKey string) {
 	defer conn.Close()
 
 	reader := bufio.NewReader(conn)
@@ -64,9 +130,15 @@ func handleConnection(conn net.Conn) {
 	if strings.HasPrefix(firstLine, "FILE:") {
 		// Handle file transfer
 		handleFileTransfer(conn, reader, firstLine[5:])
-	} else {
-		// Handle text transfer - the first line is the message
-		fmt.Printf("Received text: %s\n", firstLine)
+	} else if strings.HasPrefix(firstLine, "TEXT:") {
+		// Handle encrypted text transfer
+		encryptedMsg := firstLine[5:]
+		decryptedMsg, err := decrypt(encryptedMsg, []byte(encryptionKey))
+		if err != nil {
+			fmt.Printf("Error decrypting message: %v\n", err)
+			return
+		}
+		fmt.Printf("Received decrypted text: %s\n", decryptedMsg)
 	}
 }
 
@@ -88,6 +160,43 @@ func handleFileTransfer(conn net.Conn, reader *bufio.Reader, filename string) {
 	}
 
 	fmt.Printf("Received file: %s\n", filename)
+}
+
+// Decryption helper function
+func decrypt(encryptedMsg string, key []byte) (string, error) {
+	// Decode from base64
+	ciphertext, err := base64.StdEncoding.DecodeString(encryptedMsg)
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", err
+	}
+
+	// Create a new GCM cipher
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	// Extract nonce size
+	nonceSize := gcm.NonceSize()
+	if len(ciphertext) < nonceSize {
+		return "", fmt.Errorf("ciphertext too short")
+	}
+
+	// Extract nonce and ciphertext
+	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
+
+	// Decrypt the message
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
 }
 
 func getLocalIP() string {

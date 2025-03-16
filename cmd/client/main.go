@@ -159,6 +159,13 @@ func encrypt(plaintext []byte, key []byte) (string, error) {
 }
 
 func sendFile(serverIP, filePath string) {
+	// Get the encryption key
+	key, err := getEncryptionKey()
+	if err != nil {
+		fmt.Printf("Error getting encryption key: %v\n", err)
+		return
+	}
+
 	// Open the file
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -175,22 +182,54 @@ func sendFile(serverIP, filePath string) {
 	}
 	defer conn.Close()
 
-	// Send the filename
-	writer := bufio.NewWriter(conn)
+	// Read the entire file
+	fileContent, err := io.ReadAll(file)
+	if err != nil {
+		fmt.Printf("Error reading file: %v\n", err)
+		return
+	}
+
+	// Encrypt the file content
+	encryptedContent, err := encrypt(fileContent, []byte(key))
+	if err != nil {
+		fmt.Printf("Error encrypting file: %v\n", err)
+		return
+	}
+
+	// Encrypt the filename
 	filename := filepath.Base(filePath)
-	_, err = writer.WriteString("FILE:" + filename + "\n")
+	encryptedFilename, err := encrypt([]byte(filename), []byte(key))
+	if err != nil {
+		fmt.Printf("Error encrypting filename: %v\n", err)
+		return
+	}
+
+	writer := bufio.NewWriter(conn)
+
+	// Send the encrypted filename
+	_, err = writer.WriteString("FILE:" + encryptedFilename + "\n")
 	if err != nil {
 		fmt.Printf("Error sending filename: %v\n", err)
 		return
 	}
 	writer.Flush()
 
-	// Send the file content
-	_, err = io.Copy(conn, file)
+	// Send the encrypted content length followed by content
+	contentLength := len(encryptedContent)
+	_, err = writer.WriteString(fmt.Sprintf("%d\n", contentLength))
 	if err != nil {
-		fmt.Printf("Error sending file: %v\n", err)
+		fmt.Printf("Error sending content length: %v\n", err)
 		return
 	}
+	writer.Flush()
 
-	fmt.Printf("File %s sent successfully\n", filename)
+	// Send the encrypted content
+	_, err = writer.WriteString(encryptedContent)
+	if err != nil {
+		fmt.Printf("Error sending file content: %v\n", err)
+		return
+	}
+	writer.Flush()
+
+	fmt.Printf("File %s encrypted and sent successfully\n", filename)
 }

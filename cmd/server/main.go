@@ -128,8 +128,8 @@ func handleConnection(conn net.Conn, encryptionKey string) {
 	firstLine = strings.TrimSpace(firstLine)
 
 	if strings.HasPrefix(firstLine, "FILE:") {
-		// Handle file transfer
-		handleFileTransfer(conn, reader, firstLine[5:])
+		// Handle encrypted file transfer
+		handleFileTransfer(conn, reader, firstLine[5:], encryptionKey)
 	} else if strings.HasPrefix(firstLine, "TEXT:") {
 		// Handle encrypted text transfer
 		encryptedMsg := firstLine[5:]
@@ -142,7 +142,42 @@ func handleConnection(conn net.Conn, encryptionKey string) {
 	}
 }
 
-func handleFileTransfer(conn net.Conn, reader *bufio.Reader, filename string) {
+func handleFileTransfer(conn net.Conn, reader *bufio.Reader, encryptedFilename string, encryptionKey string) {
+	// Decrypt the filename
+	filename, err := decrypt(encryptedFilename, []byte(encryptionKey))
+	if err != nil {
+		fmt.Printf("Error decrypting filename: %v\n", err)
+		return
+	}
+
+	// Read the content length
+	lengthStr, err := reader.ReadString('\n')
+	if err != nil {
+		fmt.Printf("Error reading content length: %v\n", err)
+		return
+	}
+	contentLength := 0
+	_, err = fmt.Sscanf(strings.TrimSpace(lengthStr), "%d", &contentLength)
+	if err != nil {
+		fmt.Printf("Error parsing content length: %v\n", err)
+		return
+	}
+
+	// Read the encrypted content
+	encryptedContent := make([]byte, contentLength)
+	_, err = io.ReadFull(reader, encryptedContent)
+	if err != nil {
+		fmt.Printf("Error reading file content: %v\n", err)
+		return
+	}
+
+	// Decrypt the content
+	decryptedContent, err := decrypt(string(encryptedContent), []byte(encryptionKey))
+	if err != nil {
+		fmt.Printf("Error decrypting file content: %v\n", err)
+		return
+	}
+
 	// Create the file in uploads directory
 	filepath := filepath.Join("uploads", filename)
 	file, err := os.Create(filepath)
@@ -152,14 +187,14 @@ func handleFileTransfer(conn net.Conn, reader *bufio.Reader, filename string) {
 	}
 	defer file.Close()
 
-	// Copy the file content
-	_, err = io.Copy(file, reader)
+	// Write the decrypted content
+	_, err = file.Write([]byte(decryptedContent))
 	if err != nil {
-		fmt.Printf("Error copying file: %v\n", err)
+		fmt.Printf("Error writing file: %v\n", err)
 		return
 	}
 
-	fmt.Printf("Received file: %s\n", filename)
+	fmt.Printf("Received and decrypted file: %s\n", filename)
 }
 
 // Decryption helper function

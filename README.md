@@ -22,9 +22,11 @@ A simple CLI application written in Go that allows sharing text and files betwee
 ```
 local-share/
 ├── bin/            # Compiled binaries
-├── cmd/
-│   ├── server/     # Server application
-│   └── client/     # Client application
+├── cmd/            # Main application entry point
+├── pkg/
+│   ├── receiver/   # Server functionality
+│   ├── sender/     # Client functionality
+│   └── crypto/     # Shared encryption utilities
 ├── uploads/        # Directory for received files
 └── go.mod
 ```
@@ -38,11 +40,8 @@ For Windows:
 # Create bin directory if it doesn't exist
 mkdir bin
 
-# Build server
-go build -o bin/server.exe ./cmd/server
-
-# Build client
-go build -o bin/client.exe ./cmd/client
+# Build the single binary
+go build -o bin/local-share.exe ./cmd
 ```
 
 For Unix-like systems (Linux/macOS):
@@ -50,16 +49,12 @@ For Unix-like systems (Linux/macOS):
 # Create bin directory if it doesn't exist
 mkdir -p bin
 
-# Build server
-go build -o bin/server ./cmd/server
-
-# Build client
-go build -o bin/client ./cmd/client
+# Build the single binary
+go build -o bin/local-share ./cmd
 ```
 
-This will create two executables in the `bin` directory:
-- `bin/server` (on Unix-like systems) or `bin/server.exe` (on Windows)
-- `bin/client` (on Unix-like systems) or `bin/client.exe` (on Windows)
+This will create a single executable in the `bin` directory:
+- `bin/local-share` (on Unix-like systems) or `bin/local-share.exe` (on Windows)
 
 ## Usage
 
@@ -68,10 +63,10 @@ This will create two executables in the `bin` directory:
 1. Run the server on the receiving computer:
 ```bash
 # Windows
-.\bin\server.exe
+.\bin\local-share.exe receiver
 
 # Unix-like systems
-./bin/server
+./bin/local-share receiver
 ```
 
 The server will prompt for a password to encrypt/decrypt transfers, then display its IP address and start listening on port 8080.
@@ -81,19 +76,19 @@ The server will prompt for a password to encrypt/decrypt transfers, then display
 To send encrypted text to the server, use:
 ```bash
 # Windows
-.\bin\client.exe text <server-ip> <message>
+.\bin\local-share.exe send text <server-ip> <message>
 
 # Unix-like systems
-./bin/client text <server-ip> <message>
+./bin/local-share send text <server-ip> <message>
 ```
 
 Example:
 ```bash
 # Windows
-.\bin\client.exe text 192.168.1.100 Hello, this is a test message!
+.\bin\local-share.exe send text 192.168.1.100 "Hello, this is a test message!"
 
 # Unix-like systems
-./bin/client text 192.168.1.100 Hello, this is a test message!
+./bin/local-share send text 192.168.1.100 "Hello, this is a test message!"
 ```
 
 When sending text, you'll be prompted to enter the same password that was used to start the server.
@@ -103,22 +98,33 @@ When sending text, you'll be prompted to enter the same password that was used t
 To send an encrypted file to the server, use:
 ```bash
 # Windows
-.\bin\client.exe file <server-ip> <file-path>
+.\bin\local-share.exe send file <server-ip> <file-path>
 
 # Unix-like systems
-./bin/client file <server-ip> <file-path>
+./bin/local-share send file <server-ip> <file-path>
 ```
 
 Example:
 ```bash
 # Windows
-.\bin\client.exe file 192.168.1.100 C:\path\to\your\file.txt
+.\bin\local-share.exe send file 192.168.1.100 C:\path\to\your\file.txt
 
 # Unix-like systems
-./bin/client file 192.168.1.100 /path/to/your/file.txt
+./bin/local-share send file 192.168.1.100 /path/to/your/file.txt
 ```
 
 The file will be encrypted before transfer, including both the filename and content. The server will decrypt it automatically using the same password.
+
+### Getting Help
+
+To show usage information:
+```bash
+# Windows
+.\bin\local-share.exe help
+
+# Unix-like systems
+./bin/local-share help
+```
 
 ## Password Management
 
